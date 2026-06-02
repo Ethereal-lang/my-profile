@@ -1328,22 +1328,163 @@ body.admin-mode [data-editable]:hover {
 
 /* Sidebar */
 .chat-sidebar {
-    width: 120px;
+    width: 140px;
     border-right: 1px solid rgba(255,255,255,0.04);
     display: flex;
     flex-direction: column;
     flex-shrink: 0;
 }
 
+.chat-sidebar-tabs {
+    display: flex;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+
+.chat-stab {
+    flex: 1;
+    background: none;
+    border: none;
+    color: #505060;
+    font-family: inherit;
+    font-size: 0.72rem;
+    padding: 8px 4px;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+}
+
+.chat-stab.active {
+    color: #00ffc8;
+    border-bottom-color: #00ffc8;
+}
+
+.chat-sidebar-panel {
+    display: none;
+    flex-direction: column;
+    flex: 1;
+}
+
+.chat-sidebar-panel.active {
+    display: flex;
+}
+
 .chat-sidebar-header {
-    padding: 10px 12px;
+    padding: 8px 12px;
     border-bottom: 1px solid rgba(255,255,255,0.04);
     font-size: 0.7rem;
     color: #606070;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
 }
 
-.chat-sidebar-title {
-    letter-spacing: 1px;
+.chat-add-btn {
+    background: none;
+    border: 1px solid #404050;
+    color: #00ffc8;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    font-size: 0.8rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+.chat-add-btn:hover {
+    border-color: #00ffc8;
+    background: rgba(0,255,200,0.1);
+}
+
+.chat-user-item .chat-add-friend {
+    background: none;
+    border: none;
+    color: #505060;
+    font-size: 0.65rem;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 3px;
+    margin-left: auto;
+    flex-shrink: 0;
+    transition: all 0.2s;
+}
+
+.chat-user-item .chat-add-friend:hover {
+    color: #00ffc8;
+    background: rgba(0,255,200,0.08);
+}
+
+/* Chat tabs (room / private) */
+.chat-tabs {
+    display: flex;
+    gap: 2px;
+    padding: 6px 10px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    overflow-x: auto;
+    flex-shrink: 0;
+}
+
+.chat-tab {
+    background: none;
+    border: none;
+    color: #505060;
+    font-family: inherit;
+    font-size: 0.72rem;
+    padding: 6px 14px;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    white-space: nowrap;
+    transition: all 0.2s;
+    border-radius: 4px 4px 0 0;
+}
+
+.chat-tab.active {
+    color: #e0e0f0;
+    border-bottom-color: #00ffc8;
+    background: rgba(0,255,200,0.04);
+}
+
+.chat-tab .chat-tab-close {
+    margin-left: 4px;
+    font-size: 0.65rem;
+    opacity: 0.5;
+}
+
+.chat-tab .chat-tab-close:hover {
+    opacity: 1;
+    color: #ff5f57;
+}
+
+/* Friend request toast */
+.friend-toast {
+    position: fixed;
+    top: 80px;
+    right: 28px;
+    z-index: 165;
+    background: rgba(8,8,14,0.97);
+    border: 1px solid rgba(0,255,200,0.15);
+    border-radius: 8px;
+    padding: 14px 18px;
+    backdrop-filter: blur(12px);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    animation: chatIn 0.25s ease;
+    min-width: 240px;
+}
+
+.friend-toast-content {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    font-size: 0.82rem;
+    color: #c0c0d0;
+}
+
+.friend-toast-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
 }
 
 .chat-user-list {
@@ -1379,6 +1520,11 @@ body.admin-mode [data-editable]:hover {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+.chat-user-dot.offline {
+    background: #404050;
+    box-shadow: none;
 }
 
 /* Chat area */

@@ -527,14 +527,28 @@ console.log('%c Try clicking the glitch title 7 times... ',
     'color:#7b61ff;font-size:11px;');
 
 /* ══════════════════════════════════════════════════════════════
-   ═══  CHAT — WebSocket Real-time Messaging  ═══
+   ═══  CHAT — WebSocket + Friend System + Private Chat  ═══
    ══════════════════════════════════════════════════════════════ */
 
-const CHAT_SERVER = 'https://void-nexus-chat.onrender.com';  // Deployed on Render
+const CHAT_SERVER = 'https://void-nexus-chat.onrender.com';
 let chatSocket = null;
 let chatJoined = false;
+let chatUserId = '';
 let chatNickname = '';
 let chatCountry = '';
+let currentChat = 'room'; // 'room' or friendUserId
+let friendList = [];
+let pendingFriendReq = [];
+
+// Generate persistent user ID
+function getUserId() {
+    let uid = localStorage.getItem('void_chat_userId');
+    if (!uid) {
+        uid = 'u_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+        localStorage.setItem('void_chat_userId', uid);
+    }
+    return uid;
+}
 
 // ———— Chat FAB ————
 const chatFab = document.getElementById('chatFab');
@@ -544,13 +558,11 @@ const chatClose = document.getElementById('chatClose');
 chatFab.addEventListener('click', () => {
     const isOpen = chatPanel.style.display !== 'none';
     chatPanel.style.display = isOpen ? 'none' : 'flex';
-    if (isOpen && chatSocket) {
-        // Minimizing — blur input
-        document.getElementById('chatInput').blur();
-    }
-    if (!isOpen && chatJoined) {
-        document.getElementById('chatInput').focus();
-    }
+    if (isOpen && chatSocket) document.getElementById('chatInput').blur();
+    if (!isOpen && chatJoined) document.getElementById('chatInput').focus();
+    // Clear badge
+    badgeCount = 0;
+    document.getElementById('chatBadge').style.display = 'none';
 });
 
 chatClose.addEventListener('click', () => {
@@ -575,11 +587,9 @@ function connectToChat() {
         return;
     }
     chatNicknameInput.style.borderColor = '';
-
     chatNickname = nick;
     chatCountry = chatCountrySelect.value;
 
-    // Connect socket
     if (chatSocket) chatSocket.disconnect();
 
     chatSocket = io(CHAT_SERVER, {
@@ -589,7 +599,9 @@ function connectToChat() {
     });
 
     chatSocket.on('connect', () => {
+        chatUserId = getUserId();
         chatSocket.emit('join', {
+            userId: chatUserId,
             nickname: chatNickname,
             avatar: chatNickname.charAt(0).toUpperCase(),
             country: chatCountry
@@ -601,25 +613,33 @@ function connectToChat() {
         chatFab.style.display = 'none';
     });
 
+    // Room history
     chatSocket.on('history', (messages) => {
-        messages.forEach(msg => renderMessage(msg));
-        scrollChatBottom();
-    });
-
-    chatSocket.on('message', (msg) => {
-        renderMessage(msg);
-        scrollChatBottom();
-        // Show badge if panel not focused
-        if (chatPanel.style.display === 'none' || document.hidden) {
-            showChatBadge();
+        if (currentChat === 'room') {
+            const container = document.getElementById('chatMessages');
+            container.innerHTML = '';
+            messages.forEach(msg => renderMessage(msg, 'room'));
+            scrollChatBottom('room');
         }
     });
 
+    // Room message
+    chatSocket.on('message', (msg) => {
+        if (currentChat === 'room') {
+            renderMessage(msg, 'room');
+            scrollChatBottom('room');
+        }
+        if (chatPanel.style.display === 'none' || document.hidden) showChatBadge();
+    });
+
+    // Online users
     chatSocket.on('users', (users) => {
         renderUserList(users);
     });
 
+    // Room typing
     chatSocket.on('typing', (data) => {
+        if (currentChat !== 'room') return;
         const typingEl = document.getElementById('chatTyping');
         if (data.typing && data.id !== chatSocket.id) {
             typingEl.textContent = `${data.nickname} 正在输入...`;
@@ -629,24 +649,131 @@ function connectToChat() {
         }
     });
 
+    // ─── Friend Events ───
+    chatSocket.on('friends_list', (list) => {
+        friendList = list;
+        renderFriendList(list);
+    });
+
+    chatSocket.on('friend_requests', (requests) => {
+        pendingFriendReq = requests;
+    });
+
+    chatSocket.on('friend_request_sent', (data) => {
+        document.getElementById('addFriendResult').textContent =
+            `✓ 好友请求已发送给 ${data.toNickname}`;
+        document.getElementById('addFriendResult').style.color = '#00ffc8';
+        setTimeout(() => {
+            document.getElementById('addFriendModal').style.display = 'none';
+        }, 1500);
+    });
+
+    chatSocket.on('friend_request_received', (data) => {
+        pendingFriendReq.push(data);
+        showFriendToast(data);
+    });
+
+    chatSocket.on('friend_error', (data) => {
+        document.getElementById('addFriendResult').textContent = `✕ ${data.msg}`;
+        document.getElementById('addFriendResult').style.color = '#ff5f57';
+    });
+
+    chatSocket.on('friend_added', (data) => {
+        // Refresh friend list
+        chatSocket.emit('friend_request', { toUserId: '__refresh__' }); // no-op trigger
+    });
+
+    chatSocket.on('friend_removed', (data) => {
+        if (currentChat === data.friendUserId) {
+            switchChat('room');
+        }
+    });
+
+    // ─── Private Chat Events ───
+    chatSocket.on('private_history', (data) => {
+        if (currentChat === data.withUserId) {
+            const container = document.getElementById('chatMessages');
+            container.innerHTML = '';
+            (data.messages || []).forEach(msg => {
+                renderPrivateMessage(msg, data.withUserId);
+            });
+            scrollChatBottom('room');
+        }
+    });
+
+    chatSocket.on('private_message', (data) => {
+        const fromId = data.fromUserId === chatUserId ? data.toUserId : data.fromUserId;
+        // If currently chatting with this person, show it
+        if (currentChat === fromId) {
+            renderPrivateMessage(data, fromId);
+            scrollChatBottom('room');
+        }
+        // Show badge
+        if (chatPanel.style.display === 'none' || document.hidden) showChatBadge();
+        // Flash the tab
+        const tab = document.querySelector(`.chat-tab[data-chat="${fromId}"]`);
+        if (tab && currentChat !== fromId) {
+            tab.style.color = '#00ffc8';
+        }
+    });
+
+    chatSocket.on('private_typing', (data) => {
+        if (currentChat !== data.fromUserId) return;
+        const typingEl = document.getElementById('chatTyping');
+        if (data.typing) {
+            typingEl.textContent = `${data.nickname} 正在输入...`;
+            typingEl.style.display = 'block';
+        } else {
+            typingEl.style.display = 'none';
+        }
+    });
+
     chatSocket.on('disconnect', () => {
-        // Show system message
-        renderMessage({
-            type: 'system',
-            text: '⚠ 连接断开，正在重连...',
-            time: Date.now()
-        });
+        const container = document.getElementById('chatMessages');
+        if (currentChat === 'room') {
+            renderMessage({ type: 'system', text: '⚠ 连接断开，正在重连...', time: Date.now() }, 'room');
+        }
+    });
+
+    // Friend request by nickname result
+    chatSocket.on('friend_request_by_nickname_result', (data) => {
+        if (data.found) {
+            // Send actual friend request
+            chatSocket.emit('friend_request', { toUserId: data.userId });
+            addFriendResult.textContent = `✓ 已向 ${data.nickname} 发送好友请求`;
+            addFriendResult.style.color = '#00ffc8';
+            setTimeout(() => {
+                document.getElementById('addFriendModal').style.display = 'none';
+            }, 1500);
+        } else {
+            addFriendResult.textContent = '✕ 未找到该用户，确认昵称是否正确';
+            addFriendResult.style.color = '#ff5f57';
+        }
     });
 }
 
-// ———— Send Message ————
+// ═══ SEND MESSAGE ═══
 const chatInput = document.getElementById('chatInput');
 const chatSendBtn = document.getElementById('chatSendBtn');
 
 function sendChatMessage() {
     const text = chatInput.value.trim();
     if (!text || !chatSocket) return;
-    chatSocket.emit('message', text);
+
+    if (currentChat === 'room') {
+        chatSocket.emit('message', text);
+    } else {
+        chatSocket.emit('private_message', { toUserId: currentChat, text });
+        // Render locally
+        renderPrivateMessage({
+            fromUserId: chatUserId,
+            fromNickname: chatNickname,
+            text: text,
+            time: Date.now(),
+            toUserId: currentChat
+        }, currentChat);
+        scrollChatBottom('room');
+    }
     chatInput.value = '';
     chatInput.focus();
 }
@@ -659,19 +786,88 @@ chatInput.addEventListener('keydown', (e) => {
     }
 });
 
-// ———— Typing Indicator ————
+// ———— Typing ————
 let typingTimer = null;
 chatInput.addEventListener('input', () => {
     if (!chatSocket) return;
-    chatSocket.emit('typing', true);
+    if (currentChat === 'room') {
+        chatSocket.emit('typing', true);
+    } else {
+        chatSocket.emit('private_typing', { toUserId: currentChat, typing: true });
+    }
     clearTimeout(typingTimer);
     typingTimer = setTimeout(() => {
-        chatSocket.emit('typing', false);
+        if (currentChat === 'room') {
+            chatSocket.emit('typing', false);
+        } else {
+            chatSocket.emit('private_typing', { toUserId: currentChat, typing: false });
+        }
     }, 1500);
 });
 
-// ———— Render Message ————
-function renderMessage(msg) {
+// ═══ CHAT TABS ═══
+function switchChat(chatId) {
+    currentChat = chatId;
+    const container = document.getElementById('chatMessages');
+    container.innerHTML = '';
+    document.getElementById('chatTyping').style.display = 'none';
+
+    // Update tabs
+    document.querySelectorAll('.chat-tab').forEach(t => t.classList.remove('active'));
+    let tab = document.querySelector(`.chat-tab[data-chat="${chatId}"]`);
+    if (tab) tab.classList.add('active');
+
+    // Request history
+    if (chatId === 'room') {
+        // Room - already have history via socket
+        document.getElementById('chatInput').placeholder = '输入消息...';
+    } else {
+        // Private chat - request history
+        document.getElementById('chatInput').placeholder = `给 ${getFriendNickname(chatId)} 发消息...`;
+        chatSocket.emit('private_history', { withUserId: chatId });
+    }
+}
+
+function getFriendNickname(userId) {
+    const f = friendList.find(f => f.userId === userId);
+    return f ? f.nickname : '好友';
+}
+
+function openPrivateChat(userId) {
+    const friend = friendList.find(f => f.userId === userId);
+    if (!friend) return;
+
+    // Check if tab already exists
+    if (document.querySelector(`.chat-tab[data-chat="${userId}"]`)) {
+        switchChat(userId);
+        return;
+    }
+
+    // Add new tab
+    const tabs = document.getElementById('chatTabs');
+    const btn = document.createElement('button');
+    btn.className = 'chat-tab';
+    btn.dataset.chat = userId;
+    btn.innerHTML = `${friend.nickname} <span class="chat-tab-close">✕</span>`;
+    btn.querySelector('.chat-tab-close').addEventListener('click', (e) => {
+        e.stopPropagation();
+        closePrivateChat(userId);
+    });
+    btn.addEventListener('click', () => switchChat(userId));
+    tabs.appendChild(btn);
+
+    switchChat(userId);
+}
+
+function closePrivateChat(userId) {
+    if (currentChat === userId) switchChat('room');
+    const tab = document.querySelector(`.chat-tab[data-chat="${userId}"]`);
+    if (tab) tab.remove();
+}
+
+// ═══ RENDER: Room Message ═══
+function renderMessage(msg, chatId) {
+    if (chatId && chatId !== currentChat) return;
     const container = document.getElementById('chatMessages');
     const div = document.createElement('div');
     div.className = 'chat-msg';
@@ -680,24 +876,44 @@ function renderMessage(msg) {
         div.classList.add('system');
         div.innerHTML = `<div class="chat-msg-bubble">${msg.text}</div>`;
     } else {
-        const isSelf = msg.id === (chatSocket ? chatSocket.id : null);
+        const isSelf = msg.userId === chatUserId;
         div.classList.add(isSelf ? 'self' : 'other');
-
         const time = new Date(msg.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         div.innerHTML = `
             <div class="chat-msg-header">
-                <span class="chat-msg-name">${msg.nickname}</span>
+                <span class="chat-msg-name">${escapeHtml(msg.nickname)}</span>
                 <span class="chat-msg-country">${msg.country || ''}</span>
                 <span class="chat-msg-time">${time}</span>
             </div>
             <div class="chat-msg-bubble">${escapeHtml(msg.text)}</div>
         `;
     }
-
     container.appendChild(div);
 }
 
-// ———— Render User List ————
+// ═══ RENDER: Private Message ═══
+function renderPrivateMessage(data, chatWithId) {
+    if (currentChat !== chatWithId) return;
+    const container = document.getElementById('chatMessages');
+    const div = document.createElement('div');
+    div.className = 'chat-msg';
+
+    const isSelf = data.fromUserId === chatUserId;
+    div.classList.add(isSelf ? 'self' : 'other');
+
+    const time = new Date(data.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const name = isSelf ? chatNickname : (data.fromNickname || '好友');
+    div.innerHTML = `
+        <div class="chat-msg-header">
+            <span class="chat-msg-name">${escapeHtml(name)}</span>
+            <span class="chat-msg-time">${time}</span>
+        </div>
+        <div class="chat-msg-bubble">${escapeHtml(data.text)}</div>
+    `;
+    container.appendChild(div);
+}
+
+// ═══ RENDER: User List (with add friend) ═══
 function renderUserList(users) {
     const container = document.getElementById('chatUserList');
     const onlineCount = document.getElementById('chatOnlineCount');
@@ -705,12 +921,30 @@ function renderUserList(users) {
 
     container.innerHTML = '';
     users.forEach(u => {
+        if (u.userId === chatUserId) return; // skip self
+        const isFriend = friendList.some(f => f.userId === u.userId);
         const item = document.createElement('div');
         item.className = 'chat-user-item';
         item.innerHTML = `
             <span class="chat-user-dot"></span>
-            <span class="chat-user-name">${u.nickname}</span>
+            <span class="chat-user-name">${escapeHtml(u.nickname)}</span>
+            ${isFriend
+                ? '<button class="chat-add-friend friend-ok">✓ 好友</button>'
+                : '<button class="chat-add-friend">+ 好友</button>'
+            }
         `;
+        const btn = item.querySelector('.chat-add-friend');
+        if (!isFriend) {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                sendFriendRequest(u.userId, u.nickname);
+            });
+        } else {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                openPrivateChat(u.userId);
+            });
+        }
         container.appendChild(item);
     });
 
@@ -719,36 +953,161 @@ function renderUserList(users) {
     if (onlineSidebar) onlineSidebar.textContent = count;
 }
 
-// ———— Badge ————
+// ═══ RENDER: Friend List ═══
+function renderFriendList(list) {
+    const container = document.getElementById('chatFriendList');
+    const countEl = document.getElementById('chatFriendCount');
+    container.innerHTML = '';
+
+    if (list.length === 0) {
+        container.innerHTML = '<div style="color:#404050;font-size:0.7rem;padding:20px 12px;text-align:center">还没有好友<br>在「在线」列表添加吧</div>';
+    }
+
+    list.forEach(f => {
+        const item = document.createElement('div');
+        item.className = 'chat-user-item';
+        item.style.cursor = 'pointer';
+        item.innerHTML = `
+            <span class="chat-user-dot ${f.online ? '' : 'offline'}"></span>
+            <span class="chat-user-name">${escapeHtml(f.nickname)}</span>
+            <span style="font-size:0.6rem;color:#505060;margin-left:auto">${f.country || ''}</span>
+        `;
+        item.addEventListener('click', () => openPrivateChat(f.userId));
+        container.appendChild(item);
+    });
+
+    if (countEl) countEl.textContent = list.length;
+}
+
+// ═══ ADD FRIEND ═══
+const addFriendBtn = document.getElementById('chatAddFriendBtn');
+const addFriendModal = document.getElementById('addFriendModal');
+const addFriendInput = document.getElementById('addFriendInput');
+const addFriendConfirm = document.getElementById('addFriendConfirm');
+const addFriendCancel = document.getElementById('addFriendCancel');
+const addFriendResult = document.getElementById('addFriendResult');
+
+addFriendBtn.addEventListener('click', () => {
+    addFriendModal.style.display = 'flex';
+    addFriendInput.value = '';
+    addFriendResult.textContent = '';
+    addFriendInput.focus();
+});
+
+addFriendConfirm.addEventListener('click', () => {
+    const name = addFriendInput.value.trim();
+    if (!name) return;
+    // Find user by nickname from socket
+    addFriendResult.textContent = ' searching...';
+    addFriendResult.style.color = '#808090';
+    // We'll search by emitting to server; for simplicity, ask the user to type
+    // the exact nickname and we'll match on our user list
+    if (!chatSocket) return;
+
+    // Find matching online user
+    // The server doesn't have a search-by-nickname endpoint, so we use
+    // the friend_request event with the nickname, and the server resolves it
+    // Actually our server uses userId for friend requests.
+    // Let's find the user by nickname from our known data.
+    // We'll emit a special event to look up by nickname
+
+    // Simple approach: lookup in current known users
+    // We'll ask server to find by nickname
+    chatSocket.emit('friend_request_by_nickname', { nickname: name });
+});
+
+addFriendInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') addFriendConfirm.click();
+});
+
+addFriendCancel.addEventListener('click', () => {
+    addFriendModal.style.display = 'none';
+});
+
+function sendFriendRequest(userId, nickname) {
+    if (!chatSocket) return;
+    chatSocket.emit('friend_request', { toUserId: userId });
+    showChatNotification(`好友请求已发送给 ${nickname}`);
+}
+
+// Friend request by nickname handler (runs on addFriendConfirm click)
+addFriendConfirm.addEventListener('click', function localLookup() {
+    const name = addFriendInput.value.trim();
+    if (!name || !chatSocket) return;
+
+    chatSocket.emit('friend_request_by_nickname', { nickname: name });
+    addFriendResult.textContent = '⏳ 搜索中...';
+    addFriendResult.style.color = '#808090';
+});
+
+// ═══ FRIEND REQUEST TOAST ═══
+let currentFriendReq = null;
+const friendToast = document.getElementById('friendRequestToast');
+const friendReqText = document.getElementById('friendReqText');
+const friendReqAccept = document.getElementById('friendReqAccept');
+const friendReqReject = document.getElementById('friendReqReject');
+
+function showFriendToast(data) {
+    currentFriendReq = data;
+    friendReqText.textContent = `${data.fromNickname} 发来好友请求 ✦`;
+    friendToast.style.display = 'block';
+    setTimeout(() => { friendToast.style.display = 'none'; }, 10000);
+}
+
+friendReqAccept.addEventListener('click', () => {
+    if (currentFriendReq && chatSocket) {
+        chatSocket.emit('friend_accept', { fromUserId: currentFriendReq.fromUserId });
+        friendToast.style.display = 'none';
+        showChatNotification(`已添加 ${currentFriendReq.fromNickname} 为好友`);
+    }
+});
+
+friendReqReject.addEventListener('click', () => {
+    if (currentFriendReq && chatSocket) {
+        chatSocket.emit('friend_reject', { fromUserId: currentFriendReq.fromUserId });
+        friendToast.style.display = 'none';
+    }
+});
+
+// ═══ SIDEBAR TABS ═══
+document.querySelectorAll('.chat-stab').forEach(tab => {
+    tab.addEventListener('click', () => {
+        document.querySelectorAll('.chat-stab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.chat-sidebar-panel').forEach(p => p.classList.remove('active'));
+        tab.classList.add('active');
+        document.getElementById('stab-' + tab.dataset.stab).classList.add('active');
+    });
+});
+
+// ═══ BADGE ═══
 let badgeCount = 0;
 function showChatBadge() {
     const badge = document.getElementById('chatBadge');
-    const chatFabBtn = document.getElementById('chatFab');
     badgeCount++;
     badge.textContent = badgeCount;
     badge.style.display = 'flex';
-    chatFabBtn.style.animation = 'none';
-    setTimeout(() => chatFabBtn.style.animation = '', 10);
 }
 
-// ———— Scrolling ————
+// ═══ NOTIFICATION ═══
+function showChatNotification(text) {
+    const container = document.getElementById('chatMessages');
+    if (currentChat !== 'room') return;
+    const div = document.createElement('div');
+    div.className = 'chat-msg system';
+    div.innerHTML = `<div class="chat-msg-bubble">${text}</div>`;
+    container.appendChild(div);
+    scrollChatBottom('room');
+}
+
+// ═══ SCROLL ═══
 function scrollChatBottom() {
     const container = document.getElementById('chatMessages');
-    setTimeout(() => {
-        container.scrollTop = container.scrollHeight;
-    }, 50);
+    setTimeout(() => { container.scrollTop = container.scrollHeight; }, 50);
 }
 
-// ———— Util ————
+// ═══ UTIL ═══
 function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
 }
-
-// ———— Clear badge when opening chat ————
-const origChatOpen = chatFab.click;
-chatFab.addEventListener('click', () => {
-    badgeCount = 0;
-    document.getElementById('chatBadge').style.display = 'none';
-}, true);

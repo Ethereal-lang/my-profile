@@ -340,12 +340,28 @@
         <div id="chatMain" class="chat-main" style="display:none">
             <div class="chat-layout">
                 <div class="chat-sidebar">
-                    <div class="chat-sidebar-header">
-                        <span class="chat-sidebar-title">在线 <span id="chatOnlineSidebar">0</span></span>
+                    <div class="chat-sidebar-tabs">
+                        <button class="chat-stab active" data-stab="online">在线</button>
+                        <button class="chat-stab" data-stab="friends">好友</button>
                     </div>
-                    <div id="chatUserList" class="chat-user-list"></div>
+                    <div class="chat-sidebar-panel active" id="stab-online">
+                        <div class="chat-sidebar-header">
+                            <span>在线 <b id="chatOnlineSidebar">0</b></span>
+                        </div>
+                        <div id="chatUserList" class="chat-user-list"></div>
+                    </div>
+                    <div class="chat-sidebar-panel" id="stab-friends">
+                        <div class="chat-sidebar-header">
+                            <span>好友 <b id="chatFriendCount">0</b></span>
+                            <button id="chatAddFriendBtn" class="chat-add-btn">+</button>
+                        </div>
+                        <div id="chatFriendList" class="chat-user-list"></div>
+                    </div>
                 </div>
                 <div class="chat-area">
+                    <div class="chat-tabs" id="chatTabs">
+                        <button class="chat-tab active" data-chat="room">🌐 大厅</button>
+                    </div>
                     <div id="chatMessages" class="chat-messages"></div>
                     <div class="chat-input-area">
                         <div id="chatTyping" class="chat-typing" style="display:none">对方正在输入...</div>
@@ -355,6 +371,37 @@
                         </div>
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ ADD FRIEND MODAL ═══ -->
+    <div id="addFriendModal" class="modal-overlay" style="display:none">
+        <div class="modal-box terminal-card">
+            <div class="terminal-bar">
+                <span class="dot red"></span>
+                <span class="dot yellow"></span>
+                <span class="dot green"></span>
+                <span class="terminal-title">add_friend.sh</span>
+            </div>
+            <div class="terminal-body" style="text-align:center">
+                <p><span class="prompt">$</span> <span class="cmd">./friend --add</span></p>
+                <p class="output" style="margin:12px 0">输入对方昵称添加好友：</p>
+                <input type="text" id="addFriendInput" placeholder="对方昵称 / nickname" class="chat-input" style="margin-bottom:12px">
+                <div id="addFriendResult" style="font-size:0.8rem;margin-bottom:8px;min-height:20px"></div>
+                <button id="addFriendConfirm" class="btn-submit">[ 发送请求 ]</button>
+                <button id="addFriendCancel" class="btn-submit btn-cancel" style="margin-left:8px">[ 取消 ]</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ FRIEND REQUEST TOAST ═══ -->
+    <div id="friendRequestToast" class="friend-toast" style="display:none">
+        <div class="friend-toast-content">
+            <span id="friendReqText">好友请求</span>
+            <div class="friend-toast-actions">
+                <button id="friendReqAccept" class="btn-submit" style="font-size:0.7rem;padding:4px 12px">接受</button>
+                <button id="friendReqReject" class="btn-submit btn-cancel" style="font-size:0.7rem;padding:4px 12px">拒绝</button>
             </div>
         </div>
     </div>
