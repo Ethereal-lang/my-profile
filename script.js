@@ -530,7 +530,7 @@ console.log('%c Try clicking the glitch title 7 times... ',
    ═══  CHAT — WebSocket Real-time Messaging  ═══
    ══════════════════════════════════════════════════════════════ */
 
-const CHAT_SERVER = 'http://localhost:3000';  // Change this to your deployed server URL
+const CHAT_SERVER = 'https://void-nexus-chat.onrender.com';  // Deployed on Render
 let chatSocket = null;
 let chatJoined = false;
 let chatNickname = '';
