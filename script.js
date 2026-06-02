@@ -525,3 +525,230 @@ console.log('%c VOID.NEXUS ',
     'background:#0a0a0f;color:#00ffc8;font-size:14px;padding:4px 8px;border:1px solid #00ffc8;');
 console.log('%c Try clicking the glitch title 7 times... ',
     'color:#7b61ff;font-size:11px;');
+
+/* ══════════════════════════════════════════════════════════════
+   ═══  CHAT — WebSocket Real-time Messaging  ═══
+   ══════════════════════════════════════════════════════════════ */
+
+const CHAT_SERVER = 'http://localhost:3000';  // Change this to your deployed server URL
+let chatSocket = null;
+let chatJoined = false;
+let chatNickname = '';
+let chatCountry = '';
+
+// ———— Chat FAB ————
+const chatFab = document.getElementById('chatFab');
+const chatPanel = document.getElementById('chatPanel');
+const chatClose = document.getElementById('chatClose');
+
+chatFab.addEventListener('click', () => {
+    const isOpen = chatPanel.style.display !== 'none';
+    chatPanel.style.display = isOpen ? 'none' : 'flex';
+    if (isOpen && chatSocket) {
+        // Minimizing — blur input
+        document.getElementById('chatInput').blur();
+    }
+    if (!isOpen && chatJoined) {
+        document.getElementById('chatInput').focus();
+    }
+});
+
+chatClose.addEventListener('click', () => {
+    chatPanel.style.display = 'none';
+});
+
+// ———— Chat Login ————
+const chatJoinBtn = document.getElementById('chatJoinBtn');
+const chatNicknameInput = document.getElementById('chatNickname');
+const chatCountrySelect = document.getElementById('chatCountry');
+
+chatJoinBtn.addEventListener('click', connectToChat);
+chatNicknameInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') connectToChat();
+});
+
+function connectToChat() {
+    const nick = chatNicknameInput.value.trim();
+    if (!nick) {
+        chatNicknameInput.style.borderColor = '#ff5f57';
+        chatNicknameInput.focus();
+        return;
+    }
+    chatNicknameInput.style.borderColor = '';
+
+    chatNickname = nick;
+    chatCountry = chatCountrySelect.value;
+
+    // Connect socket
+    if (chatSocket) chatSocket.disconnect();
+
+    chatSocket = io(CHAT_SERVER, {
+        transports: ['websocket', 'polling'],
+        reconnection: true,
+        reconnectionDelay: 2000
+    });
+
+    chatSocket.on('connect', () => {
+        chatSocket.emit('join', {
+            nickname: chatNickname,
+            avatar: chatNickname.charAt(0).toUpperCase(),
+            country: chatCountry
+        });
+        chatJoined = true;
+        document.getElementById('chatLogin').style.display = 'none';
+        document.getElementById('chatMain').style.display = 'flex';
+        document.getElementById('chatInput').focus();
+        chatFab.style.display = 'none';
+    });
+
+    chatSocket.on('history', (messages) => {
+        messages.forEach(msg => renderMessage(msg));
+        scrollChatBottom();
+    });
+
+    chatSocket.on('message', (msg) => {
+        renderMessage(msg);
+        scrollChatBottom();
+        // Show badge if panel not focused
+        if (chatPanel.style.display === 'none' || document.hidden) {
+            showChatBadge();
+        }
+    });
+
+    chatSocket.on('users', (users) => {
+        renderUserList(users);
+    });
+
+    chatSocket.on('typing', (data) => {
+        const typingEl = document.getElementById('chatTyping');
+        if (data.typing && data.id !== chatSocket.id) {
+            typingEl.textContent = `${data.nickname} 正在输入...`;
+            typingEl.style.display = 'block';
+        } else {
+            typingEl.style.display = 'none';
+        }
+    });
+
+    chatSocket.on('disconnect', () => {
+        // Show system message
+        renderMessage({
+            type: 'system',
+            text: '⚠ 连接断开，正在重连...',
+            time: Date.now()
+        });
+    });
+}
+
+// ———— Send Message ————
+const chatInput = document.getElementById('chatInput');
+const chatSendBtn = document.getElementById('chatSendBtn');
+
+function sendChatMessage() {
+    const text = chatInput.value.trim();
+    if (!text || !chatSocket) return;
+    chatSocket.emit('message', text);
+    chatInput.value = '';
+    chatInput.focus();
+}
+
+chatSendBtn.addEventListener('click', sendChatMessage);
+chatInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendChatMessage();
+    }
+});
+
+// ———— Typing Indicator ————
+let typingTimer = null;
+chatInput.addEventListener('input', () => {
+    if (!chatSocket) return;
+    chatSocket.emit('typing', true);
+    clearTimeout(typingTimer);
+    typingTimer = setTimeout(() => {
+        chatSocket.emit('typing', false);
+    }, 1500);
+});
+
+// ———— Render Message ————
+function renderMessage(msg) {
+    const container = document.getElementById('chatMessages');
+    const div = document.createElement('div');
+    div.className = 'chat-msg';
+
+    if (msg.type === 'system') {
+        div.classList.add('system');
+        div.innerHTML = `<div class="chat-msg-bubble">${msg.text}</div>`;
+    } else {
+        const isSelf = msg.id === (chatSocket ? chatSocket.id : null);
+        div.classList.add(isSelf ? 'self' : 'other');
+
+        const time = new Date(msg.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        div.innerHTML = `
+            <div class="chat-msg-header">
+                <span class="chat-msg-name">${msg.nickname}</span>
+                <span class="chat-msg-country">${msg.country || ''}</span>
+                <span class="chat-msg-time">${time}</span>
+            </div>
+            <div class="chat-msg-bubble">${escapeHtml(msg.text)}</div>
+        `;
+    }
+
+    container.appendChild(div);
+}
+
+// ———— Render User List ————
+function renderUserList(users) {
+    const container = document.getElementById('chatUserList');
+    const onlineCount = document.getElementById('chatOnlineCount');
+    const onlineSidebar = document.getElementById('chatOnlineSidebar');
+
+    container.innerHTML = '';
+    users.forEach(u => {
+        const item = document.createElement('div');
+        item.className = 'chat-user-item';
+        item.innerHTML = `
+            <span class="chat-user-dot"></span>
+            <span class="chat-user-name">${u.nickname}</span>
+        `;
+        container.appendChild(item);
+    });
+
+    const count = users.length;
+    if (onlineCount) onlineCount.textContent = `${count} 人在线`;
+    if (onlineSidebar) onlineSidebar.textContent = count;
+}
+
+// ———— Badge ————
+let badgeCount = 0;
+function showChatBadge() {
+    const badge = document.getElementById('chatBadge');
+    const chatFabBtn = document.getElementById('chatFab');
+    badgeCount++;
+    badge.textContent = badgeCount;
+    badge.style.display = 'flex';
+    chatFabBtn.style.animation = 'none';
+    setTimeout(() => chatFabBtn.style.animation = '', 10);
+}
+
+// ———— Scrolling ————
+function scrollChatBottom() {
+    const container = document.getElementById('chatMessages');
+    setTimeout(() => {
+        container.scrollTop = container.scrollHeight;
+    }, 50);
+}
+
+// ———— Util ————
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// ———— Clear badge when opening chat ————
+const origChatOpen = chatFab.click;
+chatFab.addEventListener('click', () => {
+    badgeCount = 0;
+    document.getElementById('chatBadge').style.display = 'none';
+}, true);

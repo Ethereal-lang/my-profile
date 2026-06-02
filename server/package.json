@@ -1,0 +1,14 @@
+{
+  "name": "void-nexus-server",
+  "version": "1.0.0",
+  "description": "WebSocket chat server for VOID.NEXUS",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node index.js"
+  },
+  "dependencies": {
+    "socket.io": "^4.7.5",
+    "express": "^4.21.0"
+  }
+}
