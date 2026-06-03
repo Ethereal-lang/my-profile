@@ -11,6 +11,7 @@ const io = new Server(server, {
 
 const PORT = process.env.PORT || 3000;
 const MAX_ROOM_HISTORY = 100;
+const SERVER_VERSION = '2.0.0'; // friend system + private chat
 
 // Data stores
 let roomHistory = [];
@@ -23,7 +24,7 @@ let privateMessages = {};   // "userA_userB" -> [msg, ...]
 app.use(express.static(__dirname + '/..'));
 
 app.get('/health', (req, res) => {
-    res.json({ status: 'ok', online: Object.keys(socketToUser).length, users: Object.keys(users).length });
+    res.json({ status: 'ok', online: Object.keys(socketToUser).length, users: Object.keys(users).length, version: SERVER_VERSION });
 });
 
 function getConversationKey(a, b) {
