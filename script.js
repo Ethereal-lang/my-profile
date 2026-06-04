@@ -27,7 +27,14 @@ if (canvas) {
             drops[i]++;
         }
     }
-    setInterval(drawMatrix, 45);
+    let matrixInterval = setInterval(drawMatrix, 120);
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+        clearInterval(matrixInterval);
+    } else {
+        matrixInterval = setInterval(drawMatrix, 120);
+    }
+});
 }
 
 /* ══════════════════════════════════════════
@@ -57,7 +64,7 @@ function typeEffect() {
         charIdx--;
         if (charIdx === 0) { isDeleting = false; phraseIdx = (phraseIdx + 1) % phrases.length; }
     }
-    setTimeout(typeEffect, isDeleting ? 25 : 50);
+    setTimeout(typeEffect, isDeleting ? 35 : 60);
 }
 if (typewriterEl) setTimeout(typeEffect, 1500);
 
@@ -498,7 +505,7 @@ function updateDevPanel() {
 // Auto-refresh dev panel every 5s when active
 setInterval(() => {
     if (devModeActive) updateDevPanel();
-}, 5000);
+}, 10000);
 
 /* ══════════════════════════════════════════════════════════════
    ═══  KEYBOARD SHORTCUTS  ═══
@@ -576,28 +583,28 @@ chatClose.addEventListener('click', () => {
 });
 
 // ———— Auto-detect user location ————
+let locationDetected = false;
 function detectLocation() {
-    fetch('https://ipapi.co/json/')
+    if (locationDetected) return;
+    locationDetected = true;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+
+    fetch('https://ipapi.co/json/', { signal: controller.signal })
         .then(r => r.json())
         .then(data => {
+            clearTimeout(timeout);
             const country = data.country_name || '';
             const countryCode = data.country_code || '';
             const city = data.city || '';
-            // Auto-detect region
             const isChina = countryCode === 'CN' || country === 'China';
             const detectedRegion = isChina ? 'china' : 'international';
-
             chatRegion = detectedRegion;
             document.querySelectorAll('.region-btn').forEach(b => {
                 b.classList.toggle('active', b.dataset.region === detectedRegion);
             });
-
-            // Auto-select country in dropdown
             const countrySelect = document.getElementById('chatCountry');
             if (countrySelect) {
-                // Find matching option
-                const flagEmoji = getFlagEmoji(countryCode);
-                const optionText = flagEmoji + ' ' + country;
                 for (const opt of countrySelect.options) {
                     if (opt.text.includes(country)) {
                         countrySelect.value = opt.value;
@@ -605,14 +612,11 @@ function detectLocation() {
                     }
                 }
             }
-
-            // Show detected location
-            const regionLabel = isChina ? '🇨🇳 国内' : '🌍 国际';
             updateRouteInfo();
-            console.log('[location]', city, country, '→', regionLabel);
+            console.log('[location]', city, country, '→', isChina ? '🇨🇳 国内' : '🌍 国际');
         })
         .catch(() => {
-            // Fallback: keep default
+            clearTimeout(timeout);
             console.log('[location] detection failed, using default');
         });
 }
@@ -816,6 +820,13 @@ function connectToChat() {
         const container = document.getElementById('chatMessages');
         if (currentChat === 'room') {
             renderMessage({ type: 'system', text: '⚠ 连接断开，正在重连...', time: Date.now() }, 'room');
+        }
+    });
+
+    chatSocket.on('connect_error', (err) => {
+        console.log('[socket] connection error:', err.message);
+        if (currentChat === 'room') {
+            renderMessage({ type: 'system', text: '⚠ 连接失败，正在重试...', time: Date.now() }, 'room');
         }
     });
 
