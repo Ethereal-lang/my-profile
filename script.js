@@ -608,6 +608,7 @@ function detectLocation() {
 
             // Show detected location
             const regionLabel = isChina ? '🇨🇳 国内' : '🌍 国际';
+            updateRouteInfo();
             console.log('[location]', city, country, '→', regionLabel);
         })
         .catch(() => {
@@ -638,6 +639,7 @@ document.querySelectorAll('.region-btn').forEach(btn => {
         document.querySelectorAll('.region-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         chatRegion = btn.dataset.region;
+        updateRouteInfo();
     });
 });
 
@@ -671,6 +673,7 @@ function connectToChat() {
             chatMode: chatMode
         });
         chatJoined = true;
+        updateRouteInfo();
         document.getElementById('chatLogin').style.display = 'none';
         document.getElementById('chatMain').style.display = 'flex';
         document.getElementById('chatInput').focus();
@@ -856,12 +859,31 @@ function connectToChat() {
     chatSocket.emit('set_interests', INTEREST_LIST);
 }
 
+// ═══ ROUTE INFO ═══
+function updateRouteInfo() {
+    const infoEl = document.getElementById('chatRouteInfo');
+    if (!infoEl) return;
+    const isCrossRegion = (chatRegion === 'china' && chatMode === 'international') ||
+                          (chatRegion === 'international' && chatMode === 'domestic');
+    if (isCrossRegion) {
+        infoEl.innerHTML = '🌐 境外中转 · 跨地区通信经海外服务器转发';
+        infoEl.style.color = '#ffbd2e';
+    } else if (chatRegion === 'china') {
+        infoEl.innerHTML = '🇨🇳 国内直连 · 同地区通信';
+        infoEl.style.color = '#28c840';
+    } else {
+        infoEl.innerHTML = '🌍 境外直连 · 同地区通信';
+        infoEl.style.color = '#28c840';
+    }
+}
+
 // ═══ MODE SWITCH ═══
 document.querySelectorAll('.mode-btn').forEach(btn => {
     btn.addEventListener('click', () => {
         if (!chatSocket) return;
         const mode = btn.dataset.mode;
         chatSocket.emit('set_chat_mode', { chatMode: mode });
+        updateRouteInfo();
     });
 });
 
