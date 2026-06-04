@@ -530,7 +530,7 @@ console.log('%c Try clicking the glitch title 7 times... ',
    ═══  CHAT — WebSocket + Friend System + Private Chat  ═══
    ══════════════════════════════════════════════════════════════ */
 
-const CHAT_SERVER = 'https://void-nexus-chat.onrender.com';
+const CHAT_SERVER = 'https://32da148b7b1349.lhr.life';
 let chatSocket = null;
 let chatJoined = false;
 let chatUserId = '';
