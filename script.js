@@ -1022,7 +1022,12 @@ function renderRoomUsers(users) {
         const region = u.region || 'international';
         const item = document.createElement('div');
         item.className = 'chat-user-item';
-        item.innerHTML = ;
+        item.innerHTML = [
+            '<span class="chat-user-dot"></span>',
+            '<span class="chat-user-name">' + escapeHtml(u.nickname) + '</span>',
+            '<span class="chat-user-region ' + region + '">' + (region === 'china' ? '🇨🇳' : '🌍') + '</span>',
+            isFriend ? '<button class="chat-add-friend friend-ok">✓</button>' : '<button class="chat-add-friend">+</button>'
+        ].join('');
         const btn = item.querySelector('.chat-add-friend');
         if (!isFriend) {
             btn.addEventListener('click', (e) => {
