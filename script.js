@@ -661,7 +661,7 @@ function connectToChat() {
     if (chatSocket) chatSocket.disconnect();
 
     chatSocket = io(CHAT_SERVER, {
-        transports: ['websocket', 'polling'],
+        transports: ['polling', 'websocket'],
         reconnection: true,
         reconnectionDelay: 2000
     });
@@ -719,7 +719,7 @@ function connectToChat() {
         document.querySelectorAll('.mode-btn').forEach(b => {
             b.classList.toggle('active', b.dataset.mode === mode);
         });
-        const info = document.getElementById('chatModeInfo');
+        const info = document.getElementById('chatRouteInfo');
         if (info) {
             info.textContent = mode === 'domestic' ? '🏠 国内模式 · 仅显示同地区用户' : '🌐 国际模式 · 显示所有用户';
         }
