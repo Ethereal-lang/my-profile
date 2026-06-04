@@ -530,12 +530,14 @@ console.log('%c Try clicking the glitch title 7 times... ',
    ═══  CHAT — WebSocket + Friend System + Private Chat  ═══
    ══════════════════════════════════════════════════════════════ */
 
-const CHAT_SERVER = 'https://32da148b7b1349.lhr.life';
+const CHAT_SERVER = 'https://642c6dd479bd5e.lhr.life';
 let chatSocket = null;
 let chatJoined = false;
 let chatUserId = '';
 let chatNickname = '';
 let chatCountry = '';
+let chatRegion = 'china';
+let chatMode = 'international';
 let currentChat = 'room'; // 'room' or friendUserId
 let friendList = [];
 let pendingFriendReq = [];
@@ -579,6 +581,15 @@ chatNicknameInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') connectToChat();
 });
 
+// Region selector
+document.querySelectorAll('.region-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('.region-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        chatRegion = btn.dataset.region;
+    });
+});
+
 function connectToChat() {
     const nick = chatNicknameInput.value.trim();
     if (!nick) {
@@ -604,7 +615,9 @@ function connectToChat() {
             userId: chatUserId,
             nickname: chatNickname,
             avatar: chatNickname.charAt(0).toUpperCase(),
-            country: chatCountry
+            country: chatCountry,
+            region: chatRegion,
+            chatMode: chatMode
         });
         chatJoined = true;
         document.getElementById('chatLogin').style.display = 'none';
@@ -635,6 +648,23 @@ function connectToChat() {
     // Online users
     chatSocket.on('users', (users) => {
         renderUserList(users);
+    });
+
+    // Room users (filtered by mode)
+    chatSocket.on('room_users', (users) => {
+        renderRoomUsers(users);
+    });
+
+    // Mode changed
+    chatSocket.on('mode_changed', ({ chatMode: mode }) => {
+        chatMode = mode;
+        document.querySelectorAll('.mode-btn').forEach(b => {
+            b.classList.toggle('active', b.dataset.mode === mode);
+        });
+        const info = document.getElementById('chatModeInfo');
+        if (info) {
+            info.textContent = mode === 'domestic' ? '🏠 国内模式 · 仅显示同地区用户' : '🌐 国际模式 · 显示所有用户';
+        }
     });
 
     // Room typing
@@ -775,6 +805,15 @@ function connectToChat() {
     chatSocket.emit('set_interests', INTEREST_LIST);
 }
 
+// ═══ MODE SWITCH ═══
+document.querySelectorAll('.mode-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        if (!chatSocket) return;
+        const mode = btn.dataset.mode;
+        chatSocket.emit('set_chat_mode', { chatMode: mode });
+    });
+});
+
 // ═══ SEND MESSAGE ═══
 const chatInput = document.getElementById('chatInput');
 const chatSendBtn = document.getElementById('chatSendBtn');
@@ -888,6 +927,29 @@ function closePrivateChat(userId) {
     if (tab) tab.remove();
 }
 
+// ═══ RENDER: Room Users (filtered sidebar) ═══
+function renderRoomUsers(users) {
+    const container = document.getElementById('chatUserList');
+    if (!container) return;
+    container.innerHTML = '';
+    users.forEach(u => {
+        if (u.userId === chatUserId) return;
+        const isFriend = friendList.some(f => f.userId === u.userId);
+        const region = u.region || 'international';
+        const item = document.createElement('div');
+        item.className = 'chat-user-item';
+        item.innerHTML = ;
+        const btn = item.querySelector('.chat-add-friend');
+        if (!isFriend) {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                sendFriendRequest(u.userId, u.nickname);
+            });
+        }
+        container.appendChild(item);
+    });
+}
+
 // ═══ RENDER: Room Message ═══
 function renderMessage(msg, chatId) {
     if (chatId && chatId !== currentChat) return;
@@ -902,9 +964,12 @@ function renderMessage(msg, chatId) {
         const isSelf = msg.userId === chatUserId;
         div.classList.add(isSelf ? 'self' : 'other');
         const time = new Date(msg.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const msgRegion = msg.region || 'international';
+        const regionBadge = msgRegion === 'china' ? '🇨🇳' : '🌍';
         div.innerHTML = `
             <div class="chat-msg-header">
                 <span class="chat-msg-name">${escapeHtml(msg.nickname)}</span>
+                <span class="msg-region-badge ${msgRegion}">${regionBadge}</span>
                 <span class="chat-msg-country">${msg.country || ''}</span>
                 <span class="chat-msg-time">${time}</span>
             </div>

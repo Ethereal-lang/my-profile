@@ -316,7 +316,13 @@
                     <span class="chat-header-subtitle" id="chatOnlineCount">0 人在线</span>
                 </div>
             </div>
-            <button id="chatClose" class="admin-close">✕</button>
+            <div class="chat-header-right">
+                <div class="chat-mode-switch">
+                    <button class="mode-btn active" data-mode="international">🌐 国际</button>
+                    <button class="mode-btn" data-mode="domestic">🏠 国内</button>
+                </div>
+                <button id="chatClose" class="admin-close">✕</button>
+            </div>
         </div>
         <!-- Nickname input -->
         <div id="chatLogin" class="chat-login">
@@ -324,6 +330,10 @@
                 <div class="terminal-body" style="text-align:center">
                     <p style="color:#00ffc8;margin-bottom:12px;font-size:0.9rem">✦ 加入聊天室</p>
                     <input type="text" id="chatNickname" placeholder="你的昵称 / nickname" class="chat-input" maxlength="20">
+                    <div class="chat-region-selector" style="margin-top:8px;display:flex;gap:6px">
+                        <button class="region-btn active" data-region="china">🇨🇳 国内</button>
+                        <button class="region-btn" data-region="international">🌍 国际</button>
+                    </div>
                     <select id="chatCountry" class="chat-select">
                         <option value="🌍 未知">🌍 未知</option>
                         <option value="🇨🇳 中国">🇨🇳 中国</option>
