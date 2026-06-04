@@ -562,6 +562,10 @@ chatFab.addEventListener('click', () => {
     chatPanel.style.display = isOpen ? 'none' : 'flex';
     if (isOpen && chatSocket) document.getElementById('chatInput').blur();
     if (!isOpen && chatJoined) document.getElementById('chatInput').focus();
+    if (!isOpen && !chatJoined) {
+        // Detect location when opening login
+        detectLocation();
+    }
     // Clear badge
     badgeCount = 0;
     document.getElementById('chatBadge').style.display = 'none';
@@ -570,6 +574,53 @@ chatFab.addEventListener('click', () => {
 chatClose.addEventListener('click', () => {
     chatPanel.style.display = 'none';
 });
+
+// ———— Auto-detect user location ————
+function detectLocation() {
+    fetch('https://ipapi.co/json/')
+        .then(r => r.json())
+        .then(data => {
+            const country = data.country_name || '';
+            const countryCode = data.country_code || '';
+            const city = data.city || '';
+            // Auto-detect region
+            const isChina = countryCode === 'CN' || country === 'China';
+            const detectedRegion = isChina ? 'china' : 'international';
+
+            chatRegion = detectedRegion;
+            document.querySelectorAll('.region-btn').forEach(b => {
+                b.classList.toggle('active', b.dataset.region === detectedRegion);
+            });
+
+            // Auto-select country in dropdown
+            const countrySelect = document.getElementById('chatCountry');
+            if (countrySelect) {
+                // Find matching option
+                const flagEmoji = getFlagEmoji(countryCode);
+                const optionText = flagEmoji + ' ' + country;
+                for (const opt of countrySelect.options) {
+                    if (opt.text.includes(country)) {
+                        countrySelect.value = opt.value;
+                        break;
+                    }
+                }
+            }
+
+            // Show detected location
+            const regionLabel = isChina ? '🇨🇳 国内' : '🌍 国际';
+            console.log('[location]', city, country, '→', regionLabel);
+        })
+        .catch(() => {
+            // Fallback: keep default
+            console.log('[location] detection failed, using default');
+        });
+}
+
+function getFlagEmoji(countryCode) {
+    if (!countryCode || countryCode.length !== 2) return '🌍';
+    const codePoints = countryCode.toUpperCase().split('').map(c => 127397 + c.charCodeAt());
+    return String.fromCodePoint(...codePoints);
+}
 
 // ———— Chat Login ————
 const chatJoinBtn = document.getElementById('chatJoinBtn');
