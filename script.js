@@ -750,6 +750,29 @@ function connectToChat() {
             addFriendResult.style.color = '#ff5f57';
         }
     });
+
+    // ─── Match Events ───
+    chatSocket.on('matches', (data) => {
+        if (currentMatchInterest && data.interest === currentMatchInterest) {
+            renderMatchUsers(data.users);
+        }
+    });
+
+    chatSocket.on('match_request_received', (data) => {
+        currentMatchReq = data;
+        const interestName = INTEREST_NAMES[data.interest] || data.interest;
+        matchToastText.textContent = `${data.fromNickname} 想与你${interestName} ✦`;
+        matchToast.style.display = 'block';
+        setTimeout(() => { matchToast.style.display = 'none'; }, 10000);
+    });
+
+    chatSocket.on('match_accepted', (data) => {
+        showChatNotification(`✨ ${data.friendNickname} 接受了匹配，快去聊天吧！`);
+        openPrivateChat(data.friendUserId);
+    });
+
+    // Auto-set interests
+    chatSocket.emit('set_interests', INTEREST_LIST);
 }
 
 // ═══ SEND MESSAGE ═══
@@ -1111,3 +1134,146 @@ function escapeHtml(text) {
     div.textContent = text;
     return div.innerHTML;
 }
+
+/* ══════════════════════════════════════════════════════════════
+   ═══  MATCH SYSTEM — 语言交换 / 数字游民 / 协作 / 笔友  ═══
+   ══════════════════════════════════════════════════════════════ */
+
+const INTEREST_NAMES = {
+    language: '🌐 语言交换',
+    nomad: '🤝 数字游民碰头',
+    project: '💡 跨国协作',
+    penpal: '✉️ 笔友计划'
+};
+const INTEREST_LIST = ['language', 'nomad', 'project', 'penpal'];
+let currentMatchInterest = null;
+let currentMatchData = null;
+
+// Auto-set interests when joining chat
+function setMyInterests() {
+    if (!chatSocket || !chatUserId) return;
+    // User is interested in all 4 by default
+    chatSocket.emit('set_interests', INTEREST_LIST);
+}
+
+// Hook into connectToChat to call setMyInterests after joining
+// (already connected at this point, so we add a handler)
+// We'll call it from the connect handler
+// Actually, let's just patch it - add a listener on 'connect' event
+
+// Patch the chatSocket connect handler
+const origEmit = io?.prototype?.emit;
+// Simpler approach: add to the connect event listener
+
+// Open match panel
+function openMatchPanel(interest) {
+    if (!chatSocket || !chatJoined) {
+        alert('请先加入聊天室再使用匹配功能');
+        return;
+    }
+
+    currentMatchInterest = interest;
+    const titleEl = document.getElementById('matchPanelTitle');
+    const cmdEl = document.getElementById('matchPanelCmd');
+    const listEl = document.getElementById('matchUserList');
+    const panel = document.getElementById('matchPanel');
+
+    titleEl.textContent = INTEREST_NAMES[interest] || interest;
+    cmdEl.textContent = `./find --interest=${interest}`;
+    listEl.innerHTML = '<p class="output" id="matchLoading">⏳ 搜索中...</p>';
+    panel.style.display = 'flex';
+
+    // Set our interests
+    chatSocket.emit('set_interests', INTEREST_LIST);
+
+    // Request matches
+    chatSocket.emit('get_matches', { interest });
+
+    // Listen for matches result (one-time)
+    chatSocket.off('matches');
+    chatSocket.on('matches', (data) => {
+        if (data.interest !== interest) return;
+        renderMatchUsers(data.users);
+    });
+}
+
+function renderMatchUsers(users) {
+    const listEl = document.getElementById('matchUserList');
+    if (!users || users.length === 0) {
+        listEl.innerHTML = '<div class="match-empty">暂无其他人在线<br>试试切换标签页或稍后再来</div>';
+        return;
+    }
+
+    listEl.innerHTML = '';
+    users.forEach(u => {
+        const div = document.createElement('div');
+        div.className = 'match-user-item';
+        const alreadyFriend = friendList.some(f => f.userId === u.userId);
+        div.innerHTML = `
+            <div class="match-user-info">
+                <div class="match-user-name">${escapeHtml(u.nickname)}</div>
+                <div class="match-user-meta">${u.country || '未知'} · ${alreadyFriend ? '✓ 已是好友' : ''}</div>
+            </div>
+            ${alreadyFriend
+                ? '<button class="btn-match-send sent">已好友</button>'
+                : '<button class="btn-match-send">发请求</button>'
+            }
+        `;
+
+        const btn = div.querySelector('.btn-match-send');
+        if (!alreadyFriend) {
+            btn.addEventListener('click', () => {
+                btn.textContent = '已发送';
+                btn.classList.add('sent');
+                chatSocket.emit('match_request', {
+                    toUserId: u.userId,
+                    interest: currentMatchInterest
+                });
+            });
+        }
+
+        listEl.appendChild(div);
+    });
+}
+
+// Match panel close
+document.getElementById('matchPanelClose').addEventListener('click', () => {
+    document.getElementById('matchPanel').style.display = 'none';
+});
+
+// ─── Socket event: match_request_received ───
+// Add this in the connectToChat function - we need to ensure it's set up
+// We'll add it as a one-time setup that runs when chatSocket is created
+
+// Match request toast
+const matchToast = document.getElementById('matchToast');
+const matchToastText = document.getElementById('matchToastText');
+const matchToastAccept = document.getElementById('matchToastAccept');
+const matchToastReject = document.getElementById('matchToastReject');
+let currentMatchReq = null;
+
+// These handlers need to be set up after chatSocket connects
+// We'll add them in the connectToChat handler
+
+// For the initial setup, let's add global event listeners
+// that work whenever chatSocket is available
+
+// Match accept button
+matchToastAccept.addEventListener('click', () => {
+    if (currentMatchReq && chatSocket) {
+        chatSocket.emit('match_accept', { fromUserId: currentMatchReq.fromUserId });
+        matchToast.style.display = 'none';
+        showChatNotification(`✨ 已接受 ${currentMatchReq.fromNickname} 的匹配请求，自动添加为好友`);
+        currentMatchReq = null;
+    }
+});
+
+matchToastReject.addEventListener('click', () => {
+    if (currentMatchReq && chatSocket) {
+        chatSocket.emit('match_reject', { fromUserId: currentMatchReq.fromUserId });
+        matchToast.style.display = 'none';
+        currentMatchReq = null;
+    }
+});
+
+// No patching needed - handlers are set up in connectToChat directly

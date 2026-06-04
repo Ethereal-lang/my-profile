@@ -20,6 +20,8 @@ let socketToUser = {};      // socketId -> userId
 let friends = {};           // userId -> [userId, ...]
 let pendingRequests = {};   // userId -> [{fromUserId, fromNickname}, ...]
 let privateMessages = {};   // "userA_userB" -> [msg, ...]
+let userInterests = {};     // userId -> [interest, ...]
+let matchRequests = {};     // userId -> [{fromUserId, interest}, ...]
 
 app.use(express.static(__dirname + '/..'));
 
@@ -292,9 +294,93 @@ io.on('connection', (socket) => {
         }
     });
 
+    // ─── SET INTERESTS ───
+    socket.on('set_interests', (interests) => {
+        const user = users[socketToUser[socket.id]];
+        if (!user) return;
+        userInterests[user.userId] = interests || [];
+    });
+
+    // ─── GET MATCHES ───
+    socket.on('get_matches', ({ interest }) => {
+        const user = users[socketToUser[socket.id]];
+        if (!user) return;
+        const matches = Object.entries(userInterests)
+            .filter(([uid, interests]) =>
+                interests.includes(interest) && uid !== user.userId && users[uid]?.online
+            )
+            .map(([uid]) => ({
+                userId: uid,
+                nickname: users[uid].nickname,
+                country: users[uid].country
+            }));
+        socket.emit('matches', { interest, users: matches });
+    });
+
+    // ─── MATCH REQUEST ───
+    socket.on('match_request', ({ toUserId, interest }) => {
+        const fromUser = users[socketToUser[socket.id]];
+        const toUser = users[toUserId];
+        if (!fromUser || !toUser) return;
+
+        if (!matchRequests[toUserId]) matchRequests[toUserId] = [];
+        matchRequests[toUserId].push({
+            fromUserId: fromUser.userId,
+            fromNickname: fromUser.nickname,
+            interest
+        });
+
+        if (toUser.online) {
+            io.to(toUser.socketId).emit('match_request_received', {
+                fromUserId: fromUser.userId,
+                fromNickname: fromUser.nickname,
+                interest
+            });
+        }
+        socket.emit('match_request_sent', { toUserId, interest });
+    });
+
+    // ─── MATCH ACCEPT (auto-add friend) ───
+    socket.on('match_accept', ({ fromUserId }) => {
+        const user = users[socketToUser[socket.id]];
+        const fromUser = users[fromUserId];
+        if (!user || !fromUser) return;
+
+        // Remove pending match requests
+        if (matchRequests[user.userId]) {
+            matchRequests[user.userId] = matchRequests[user.userId]
+                .filter(r => r.fromUserId !== fromUserId);
+        }
+
+        // Auto-add as friends
+        if (!friends[user.userId]) friends[user.userId] = [];
+        if (!friends[fromUserId]) friends[fromUserId] = [];
+        if (!friends[user.userId].includes(fromUserId)) friends[user.userId].push(fromUserId);
+        if (!friends[fromUserId].includes(user.userId)) friends[fromUserId].push(user.userId);
+
+        // Notify both
+        socket.emit('match_accepted', { friendUserId: fromUserId, friendNickname: fromUser.nickname });
+        socket.emit('friend_added', { friendUserId: fromUserId, friendNickname: fromUser.nickname });
+        socket.emit('friends_list', getFriendList(user.userId));
+        if (fromUser.online) {
+            io.to(fromUser.socketId).emit('match_accepted', { friendUserId: user.userId, friendNickname: user.nickname });
+            io.to(fromUser.socketId).emit('friend_added', { friendUserId: user.userId, friendNickname: user.nickname });
+            io.to(fromUser.socketId).emit('friends_list', getFriendList(fromUserId));
+        }
+    });
+
+    // ─── MATCH REJECT ───
+    socket.on('match_reject', ({ fromUserId }) => {
+        const user = users[socketToUser[socket.id]];
+        if (!user || !matchRequests[user.userId]) return;
+        matchRequests[user.userId] = matchRequests[user.userId]
+            .filter(r => r.fromUserId !== fromUserId);
+    });
+
     // ─── DISCONNECT ───
     socket.on('disconnect', () => {
         const userId = socketToUser[socket.id];
+        if (userId) delete userInterests[userId];
         if (userId && users[userId]) {
             users[userId].online = false;
             if (users[userId].nickname) {
