@@ -537,7 +537,7 @@ console.log('%c Try clicking the glitch title 7 times... ',
    ═══  CHAT — WebSocket + Friend System + Private Chat  ═══
    ══════════════════════════════════════════════════════════════ */
 
-const CHAT_SERVER = 'https://0ec3b2182791fb.lhr.life';
+const CHAT_SERVER = 'https://dffee2490c9cfd.lhr.life';
 let chatSocket = null;
 let chatJoined = false;
 let chatUserId = '';
